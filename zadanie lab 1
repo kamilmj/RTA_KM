@@ -1,0 +1,63 @@
+%%file consumer_velocity.py
+from kafka import KafkaConsumer
+from collections import defaultdict, deque
+from datetime import datetime, timedelta
+import json
+
+consumer = KafkaConsumer(
+    'transactions',
+    bootstrap_servers='broker:9092',
+    group_id='velocity-detector-group',
+    auto_offset_reset='earliest',
+    value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+)
+
+# Dla każdego user_id trzymamy czasy jego ostatnich transakcji
+user_transactions = defaultdict(deque)
+
+WINDOW_SECONDS = 60
+MAX_TRANSACTIONS = 3
+
+print("Nasłuchuję anomalii prędkości: więcej niż 3 transakcje w 60 sekund...")
+
+for message in consumer:
+    transaction = message.value
+
+    user_id = transaction.get("user_id")
+    tx_id = transaction.get("tx_id")
+    amount = transaction.get("amount")
+    store = transaction.get("store")
+    category = transaction.get("category")
+    timestamp_str = transaction.get("timestamp")
+
+    # Zamiana tekstowego timestampu na datetime
+    try:
+        tx_time = datetime.fromisoformat(timestamp_str)
+    except Exception:
+        tx_time = datetime.now()
+
+    # Pobieramy kolejkę transakcji danego użytkownika
+    timestamps = user_transactions[user_id]
+
+    # Dodajemy aktualną transakcję
+    timestamps.append(tx_time)
+
+    # Usuwamy transakcje starsze niż 60 sekund
+    window_start = tx_time - timedelta(seconds=WINDOW_SECONDS)
+
+    while timestamps and timestamps[0] < window_start:
+        timestamps.popleft()
+
+    # Sprawdzamy, czy liczba transakcji przekroczyła limit
+    if len(timestamps) > MAX_TRANSACTIONS:
+        print(
+            f"ALERT VELOCITY: user_id={user_id} | "
+            f"{len(timestamps)} transakcji w {WINDOW_SECONDS}s | "
+            f"ostatnia: {tx_id} | {amount} PLN | {store} | {category}"
+        )
+    else:
+        print(
+            f"OK: user_id={user_id} | "
+            f"liczba transakcji w oknie: {len(timestamps)} | "
+            f"tx_id={tx_id}"
+        )
