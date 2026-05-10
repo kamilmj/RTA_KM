@@ -1,0 +1,55 @@
+from pyspark.sql.functions import window, avg, count, round as _round, col
+
+gdansk_lowest_avg = (
+    df
+    .filter(col("timestamp").isNotNull())
+    .filter(col("store") == "Gdańsk")
+    .groupBy(window("timestamp", "1 hour"))
+    .agg(
+        count("tx_id").alias("liczba_tx"),
+        _round(avg("amount"), 2).alias("srednia_kwota")
+    )
+    .select(
+        col("window.start").alias("godzina_od"),
+        col("window.end").alias("godzina_do"),
+        "liczba_tx",
+        "srednia_kwota"
+    )
+    .orderBy("srednia_kwota")
+)
+
+gdansk_lowest_avg.show(1, truncate=False)
+
+category_09_0930 = (
+    df
+    .filter(col("timestamp").isNotNull())
+    .filter(
+        (hour(col("timestamp")) == 9) &
+        (minute(col("timestamp")) >= 0) &
+        (minute(col("timestamp")) < 30)
+    )
+    .groupBy("category")
+    .agg(
+        count("tx_id").alias("liczba_tx")
+    )
+    .orderBy(col("liczba_tx").desc())
+)
+
+category_09_0930.show(truncate=False)
+
+peak_15min = (
+    df
+    .filter(col("timestamp").isNotNull())
+    .groupBy(window("timestamp", "15 minutes"))
+    .agg(
+        count("tx_id").alias("liczba_tx")
+    )
+    .select(
+        col("window.start").alias("od"),
+        col("window.end").alias("do"),
+        "liczba_tx"
+    )
+    .orderBy(col("liczba_tx").desc())
+)
+
+peak_15min.show(1, truncate=False)
