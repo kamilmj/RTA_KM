@@ -12,7 +12,6 @@ consumer = KafkaConsumer(
     value_deserializer=lambda x: json.loads(x.decode('utf-8'))
 )
 
-# Dla każdego user_id trzymamy czasy jego ostatnich transakcji
 user_transactions = defaultdict(deque)
 
 WINDOW_SECONDS = 60
@@ -30,25 +29,20 @@ for message in consumer:
     category = transaction.get("category")
     timestamp_str = transaction.get("timestamp")
 
-    # Zamiana tekstowego timestampu na datetime
     try:
         tx_time = datetime.fromisoformat(timestamp_str)
     except Exception:
         tx_time = datetime.now()
 
-    # Pobieramy kolejkę transakcji danego użytkownika
     timestamps = user_transactions[user_id]
 
-    # Dodajemy aktualną transakcję
     timestamps.append(tx_time)
 
-    # Usuwamy transakcje starsze niż 60 sekund
     window_start = tx_time - timedelta(seconds=WINDOW_SECONDS)
 
     while timestamps and timestamps[0] < window_start:
         timestamps.popleft()
 
-    # Sprawdzamy, czy liczba transakcji przekroczyła limit
     if len(timestamps) > MAX_TRANSACTIONS:
         print(
             f"ALERT VELOCITY: user_id={user_id} | "
